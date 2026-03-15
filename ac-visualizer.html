@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>AC Visualizer</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Space+Mono:wght@400;700&display=swap');
 
@@ -381,6 +382,27 @@
   }
   .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
   .empty-state p { font-size: 14px; }
+
+  /* ─── 3D LOADING ─── */
+  .model-loading {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(10,11,15,0.8);
+    z-index: 10; gap: 12px;
+  }
+  .model-loading .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .model-loading span {
+    font-size: 12px; color: var(--text-dim);
+    font-family: 'Space Mono', monospace;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -497,6 +519,69 @@ const products = [
 const brands = [...new Set(products.map(p => p.brand))];
 let activeBrand = "Všetky";
 let selectedProduct = null;
+
+// ─── GLB Model Mapping ───
+// Maps product IDs to GLB model files. Products without mapping use procedural model.
+const glbModelMap = {
+  // Samsung WindFree models → samsung-windfree.glb
+  1: 'models/samsung-windfree.glb',  // WindFree Comfort
+  2: 'models/samsung-windfree.glb',  // WindFree Elite
+  5: 'models/samsung-windfree.glb',  // WindFree Premium
+  // Other Samsung models → samsung-ar12.glb
+  3: 'models/samsung-ar12.glb',      // Cebu
+  4: 'models/samsung-ar12.glb',      // Luzon
+};
+
+const glbCache = {}; // cache loaded models by URL
+const gltfLoader = new THREE.GLTFLoader();
+
+function loadGLBModel(url, productDims) {
+  return new Promise((resolve, reject) => {
+    if (glbCache[url]) {
+      const clone = glbCache[url].clone(true);
+      scaleModelToDimensions(clone, productDims);
+      resolve(clone);
+      return;
+    }
+    gltfLoader.load(url,
+      (gltf) => {
+        const model = gltf.scene;
+        glbCache[url] = model.clone(true);
+        scaleModelToDimensions(model, productDims);
+        resolve(model);
+      },
+      undefined,
+      (err) => { console.warn('GLB load failed:', err); reject(err); }
+    );
+  });
+}
+
+function scaleModelToDimensions(model, dims) {
+  // Calculate bounding box of loaded model
+  const box = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+
+  // Target size in meters (dims are in mm)
+  const targetW = dims.w / 1000;
+  const targetH = dims.h / 1000;
+  const targetD = dims.d / 1000;
+
+  // Scale uniformly based on the largest axis ratio
+  const scaleX = targetW / size.x;
+  const scaleY = targetH / size.y;
+  const scaleZ = targetD / size.z;
+  const uniformScale = Math.min(scaleX, scaleY, scaleZ);
+
+  model.scale.set(uniformScale, uniformScale, uniformScale);
+
+  // Re-center the model
+  box.setFromObject(model);
+  box.getCenter(center);
+  model.position.sub(center);
+}
 
 // ─── 3D Scene variables ───
 let detailScene, detailCamera, detailRenderer, detailAcMesh;
@@ -676,7 +761,7 @@ function createACModel(p, highDetail) {
   return group;
 }
 
-function init3DDetail(p) {
+async function init3DDetail(p) {
   cleanup3DDetail();
   const container = document.getElementById('detail3dContainer');
   const w = container.clientWidth;
@@ -702,7 +787,31 @@ function init3DDetail(p) {
   dir2.position.set(-2, -1, 2);
   detailScene.add(dir2);
 
-  detailAcMesh = createACModel(p, true);
+  // Try to load GLB model, fall back to procedural
+  const glbUrl = glbModelMap[p.id];
+  if (glbUrl) {
+    // Show loading spinner
+    const loader = document.createElement('div');
+    loader.className = 'model-loading';
+    loader.id = 'detailLoader';
+    loader.innerHTML = '<div class="spinner"></div><span>Načítavam 3D model...</span>';
+    container.appendChild(loader);
+
+    try {
+      detailAcMesh = await loadGLBModel(glbUrl, p);
+      // Remove loader
+      const ld = document.getElementById('detailLoader');
+      if (ld) ld.remove();
+    } catch (err) {
+      console.warn('GLB failed, using procedural model:', err);
+      const ld = document.getElementById('detailLoader');
+      if (ld) ld.remove();
+      detailAcMesh = createACModel(p, true);
+    }
+  } else {
+    detailAcMesh = createACModel(p, true);
+  }
+
   detailScene.add(detailAcMesh);
 
   rotation = { x: 0.1, y: 0.3 };
@@ -774,7 +883,7 @@ async function startAR() {
   }
 }
 
-function initAR3D(p) {
+async function initAR3D(p) {
   const canvas = document.getElementById('arCanvas');
   const w = window.innerWidth;
   const h = window.innerHeight;
@@ -794,7 +903,18 @@ function initAR3D(p) {
   dir.position.set(1, 2, 3);
   arScene.add(dir);
 
-  arAcMesh = createACModel(p, true);
+  // Try GLB model, fall back to procedural
+  const glbUrl = glbModelMap[p.id];
+  if (glbUrl) {
+    try {
+      arAcMesh = await loadGLBModel(glbUrl, p);
+    } catch {
+      arAcMesh = createACModel(p, true);
+    }
+  } else {
+    arAcMesh = createACModel(p, true);
+  }
+
   arScene.add(arAcMesh);
 
   updateARPosition();
