@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>AC Visualizer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Space+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg: #0a0b0f;
+    --surface: #14161d;
+    --surface2: #1c1f2a;
+    --border: #2a2d3a;
+    --text: #e8e9ed;
+    --text-dim: #8b8d98;
+    --accent: #3b82f6;
+    --accent-glow: rgba(59, 130, 246, 0.3);
+    --success: #10b981;
+    --warm: #f59e0b;
+    --radius: 16px;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── HEADER ─── */
+  .header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,11,15,0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 20px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .header .back-btn {
+    width: 36px; height: 36px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-size: 18px;
+    display: none; align-items: center; justify-content: center;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .header .back-btn:hover { background: var(--border); }
+  .header .back-btn.visible { display: flex; }
+  .header h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: 16px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+    background: linear-gradient(135deg, var(--accent), #818cf8);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .header .subtitle {
+    font-size: 11px; color: var(--text-dim);
+    margin-left: auto; font-family: 'Space Mono', monospace;
+  }
+
+  /* ─── SCREENS ─── */
+  .screen { display: none; animation: fadeIn 0.3s ease; }
+  .screen.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ─── CATALOG ─── */
+  .catalog-intro {
+    padding: 32px 20px 20px;
+  }
+  .catalog-intro h2 {
+    font-size: 28px; font-weight: 700; line-height: 1.2;
+    margin-bottom: 8px;
+  }
+  .catalog-intro p { color: var(--text-dim); font-size: 14px; line-height: 1.5; }
+
+  .search-box {
+    margin: 0 20px 20px;
+    position: relative;
+  }
+  .search-box input {
+    width: 100%; padding: 14px 16px 14px 44px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; color: var(--text); font-size: 15px;
+    font-family: 'DM Sans', sans-serif;
+    outline: none; transition: border-color 0.2s;
+  }
+  .search-box input::placeholder { color: var(--text-dim); }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box .search-icon {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    color: var(--text-dim); font-size: 18px;
+  }
+
+  .brand-filter {
+    display: flex; gap: 8px; padding: 0 20px 20px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .brand-filter::-webkit-scrollbar { display: none; }
+  .brand-chip {
+    flex-shrink: 0; padding: 8px 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.2s; white-space: nowrap;
+  }
+  .brand-chip.active {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .brand-chip:hover:not(.active) { border-color: var(--text-dim); }
+
+  .product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px; padding: 0 20px 100px;
+  }
+  .product-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px; cursor: pointer;
+    transition: all 0.25s ease;
+    position: relative; overflow: hidden;
+  }
+  .product-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+  .product-card .card-visual {
+    width: 100%; aspect-ratio: 4/3;
+    background: var(--surface2);
+    border-radius: 10px; margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  .product-card .card-visual .ac-icon {
+    font-size: 48px; opacity: 0.6;
+  }
+  .product-card .card-visual .brand-badge {
+    position: absolute; top: 8px; left: 8px;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(8px);
+    padding: 3px 8px; border-radius: 6px;
+    font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--accent);
+    font-family: 'Space Mono', monospace;
+  }
+  .product-card .card-name {
+    font-size: 13px; font-weight: 600;
+    margin-bottom: 4px; line-height: 1.3;
+  }
+  .product-card .card-specs {
+    font-size: 11px; color: var(--text-dim);
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* ─── DETAIL ─── */
+  .detail-view { padding-bottom: 120px; }
+
+  .detail-3d-container {
+    width: 100%; height: 300px;
+    background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+    position: relative; touch-action: none;
+  }
+  .detail-3d-container canvas { width: 100% !important; height: 100% !important; }
+  .rotate-hint {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+    padding: 6px 14px; border-radius: 20px;
+    font-size: 11px; color: var(--text-dim);
+    pointer-events: none;
+    animation: hintPulse 2s ease infinite;
+  }
+  @keyframes hintPulse { 0%,100% { opacity: 0.7; } 50% { opacity: 1; } }
+
+  .detail-info { padding: 24px 20px; }
+  .detail-info .model-brand {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+  .detail-info .model-name {
+    font-size: 24px; font-weight: 700;
+    margin-bottom: 16px;
+  }
+
+  .specs-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px; margin-bottom: 24px;
+  }
+  .spec-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px;
+  }
+  .spec-item .spec-label {
+    font-size: 11px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .spec-item .spec-value {
+    font-size: 16px; font-weight: 600;
+    font-family: 'Space Mono', monospace;
+  }
+  .spec-item .spec-value.energy-a { color: var(--success); }
+  .spec-item .spec-value.energy-b { color: var(--warm); }
+
+  .dimensions-visual {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px;
+    margin-bottom: 24px;
+  }
+  .dimensions-visual .dim-title {
+    font-size: 12px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 16px;
+  }
+  .dim-box {
+    position: relative; margin: 0 auto;
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim); font-size: 12px;
+    font-family: 'Space Mono', monospace;
+  }
+  .dim-label-w, .dim-label-h {
+    position: absolute; color: var(--accent);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px; font-weight: 700;
+  }
+  .dim-label-w { bottom: -24px; left: 50%; transform: translateX(-50%); }
+  .dim-label-h { right: -50px; top: 50%; transform: translateY(-50%); }
+
+  /* ─── AR BUTTON ─── */
+  .ar-button-container {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    padding: 16px 20px; z-index: 90;
+    background: linear-gradient(0deg, var(--bg) 60%, transparent);
+  }
+  .ar-button {
+    width: 100%; padding: 18px;
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    border: none; border-radius: 14px;
+    color: #fff; font-size: 16px; font-weight: 600;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    box-shadow: 0 4px 24px var(--accent-glow);
+  }
+  .ar-button:hover { transform: translateY(-1px); box-shadow: 0 8px 32px var(--accent-glow); }
+  .ar-button:active { transform: scale(0.98); }
+
+  /* ─── AR VIEW ─── */
+  .ar-screen {
+    position: fixed; inset: 0; z-index: 200;
+    background: #000; display: none;
+  }
+  .ar-screen.active { display: flex; flex-direction: column; }
+  .ar-screen video {
+    width: 100%; height: 100%;
+    object-fit: cover; position: absolute; inset: 0;
+  }
+  .ar-screen canvas {
+    position: absolute; inset: 0;
+    width: 100% !important; height: 100% !important;
+    pointer-events: none;
+  }
+  .ar-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none; z-index: 10;
+  }
+  .ar-controls {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 20px; z-index: 20;
+    background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+    pointer-events: all;
+  }
+  .ar-model-label {
+    text-align: center; margin-bottom: 12px;
+    font-size: 14px; font-weight: 600;
+  }
+  .ar-model-dims {
+    text-align: center; margin-bottom: 16px;
+    font-size: 12px; color: var(--text-dim);
+    font-family: 'Space Mono', monospace;
+  }
+  .ar-slider-group { margin-bottom: 12px; }
+  .ar-slider-group label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: var(--text-dim); margin-bottom: 6px;
+  }
+  .ar-slider-group input[type="range"] {
+    width: 100%; -webkit-appearance: none; appearance: none;
+    height: 4px; background: var(--border); border-radius: 2px;
+    outline: none;
+  }
+  .ar-slider-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 20px; height: 20px;
+    background: var(--accent); border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  .ar-btn-row {
+    display: flex; gap: 10px;
+  }
+  .ar-btn {
+    flex: 1; padding: 14px;
+    border-radius: 12px; border: none;
+    font-size: 14px; font-weight: 600;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .ar-btn.primary {
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    color: #fff;
+  }
+  .ar-btn.secondary {
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(8px); color: #fff;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .ar-close {
+    position: absolute; top: 16px; right: 16px; z-index: 30;
+    width: 40px; height: 40px;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 50%; color: #fff; font-size: 20px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; pointer-events: all;
+  }
+  .ar-crosshair {
+    position: absolute; top: 40%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px; height: 60px; z-index: 5;
+    pointer-events: none;
+  }
+  .ar-crosshair::before, .ar-crosshair::after {
+    content: ''; position: absolute;
+    background: rgba(255,255,255,0.4);
+  }
+  .ar-crosshair::before {
+    width: 1px; height: 100%;
+    left: 50%; top: 0;
+  }
+  .ar-crosshair::after {
+    width: 100%; height: 1px;
+    top: 50%; left: 0;
+  }
+  .ar-instruction {
+    position: absolute; top: 80px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(12px);
+    padding: 10px 20px; border-radius: 20px;
+    font-size: 13px; color: rgba(255,255,255,0.8);
+    white-space: nowrap; z-index: 15;
+    pointer-events: none;
+    animation: hintPulse 3s ease infinite;
+  }
+
+  /* ─── TOAST ─── */
+  .toast {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+    background: var(--surface2); border: 1px solid var(--border);
+    padding: 12px 24px; border-radius: 12px;
+    font-size: 14px; z-index: 300;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    opacity: 0; transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
+  /* ─── EMPTY STATE ─── */
+  .empty-state {
+    text-align: center; padding: 60px 20px;
+    color: var(--text-dim);
+  }
+  .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+  .empty-state p { font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <button class="back-btn" id="backBtn" onclick="goBack()">←</button>
+  <h1>AC Visualizer</h1>
+  <span class="subtitle" id="headerSubtitle">Katalóg</span>
+</div>
+
+<!-- CATALOG SCREEN -->
+<div class="screen active" id="catalogScreen">
+  <div class="catalog-intro">
+    <h2>Nájdite ideálnu<br>klimatizáciu</h2>
+    <p>Vyberte model a pozrite sa, ako bude vyzerať vo vašom priestore</p>
+  </div>
+
+  <div class="search-box">
+    <span class="search-icon">⌕</span>
+    <input type="text" id="searchInput" placeholder="Hľadať model..." oninput="filterProducts()">
+  </div>
+
+  <div class="brand-filter" id="brandFilter"></div>
+  <div class="product-grid" id="productGrid"></div>
+</div>
+
+<!-- DETAIL SCREEN -->
+<div class="screen" id="detailScreen">
+  <div class="detail-view">
+    <div class="detail-3d-container" id="detail3dContainer">
+      <div class="rotate-hint">↔ Potiahnutím otáčajte model</div>
+    </div>
+    <div class="detail-info">
+      <div class="model-brand" id="detailBrand"></div>
+      <div class="model-name" id="detailName"></div>
+      <div class="specs-grid" id="specsGrid"></div>
+      <div class="dimensions-visual" id="dimVisual">
+        <div class="dim-title">Rozmery vnútornej jednotky</div>
+        <div class="dim-box" id="dimBox"></div>
+      </div>
+    </div>
+  </div>
+  <div class="ar-button-container">
+    <button class="ar-button" onclick="startAR()">
+      <span>📱</span> Zobraziť v AR na stene
+    </button>
+  </div>
+</div>
+
+<!-- AR SCREEN -->
+<div class="ar-screen" id="arScreen">
+  <video id="arVideo" autoplay playsinline muted></video>
+  <canvas id="arCanvas"></canvas>
+  <div class="ar-crosshair"></div>
+  <div class="ar-instruction">Namierte kameru na stenu</div>
+  <button class="ar-close" onclick="closeAR()">✕</button>
+  <div class="ar-controls">
+    <div class="ar-model-label" id="arModelLabel"></div>
+    <div class="ar-model-dims" id="arModelDims"></div>
+    <div class="ar-slider-group">
+      <label><span>Pozícia Y (výška)</span><span id="posYVal">50%</span></label>
+      <input type="range" id="arPosY" min="10" max="90" value="35" oninput="updateARPosition()">
+    </div>
+    <div class="ar-slider-group">
+      <label><span>Veľkosť</span><span id="scaleVal">100%</span></label>
+      <input type="range" id="arScale" min="50" max="150" value="100" oninput="updateARPosition()">
+    </div>
+    <div class="ar-btn-row">
+      <button class="ar-btn secondary" onclick="captureAR()">📷 Screenshot</button>
+      <button class="ar-btn primary" onclick="closeAR()">✓ Hotovo</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── PRODUCT DATABASE ───
+const products = [
+  // Samsung
+  { id: 1, brand: "Samsung", name: "WindFree Comfort", model: "AR09TXFCAWKNEU", w: 820, h: 299, d: 215, btu: 9000, energy: "A++", noise: 19, color: "#f0f0f0", accent: "#1a73e8" },
+  { id: 2, brand: "Samsung", name: "WindFree Elite", model: "AR12TXEAAWKNEU", w: 889, h: 299, d: 215, btu: 12000, energy: "A+++", noise: 16, color: "#f5f5f5", accent: "#1a73e8" },
+  { id: 3, brand: "Samsung", name: "Cebu", model: "AR09TXFYAWKNEU", w: 820, h: 299, d: 215, btu: 9000, energy: "A++", noise: 20, color: "#ffffff", accent: "#1a73e8" },
+  { id: 4, brand: "Samsung", name: "Luzon", model: "AR09TXHZAWKNEU", w: 820, h: 265, d: 189, btu: 9000, energy: "A++", noise: 22, color: "#f8f8f8", accent: "#1a73e8" },
+  { id: 5, brand: "Samsung", name: "WindFree Premium", model: "AR24TXCAAWKNEU", w: 1055, h: 299, d: 215, btu: 24000, energy: "A++", noise: 21, color: "#e8e8e8", accent: "#1a73e8" },
+
+  // Midea
+  { id: 10, brand: "Midea", name: "Mission II", model: "MB-09N8D6-I", w: 795, h: 275, d: 200, btu: 9000, energy: "A++", noise: 22, color: "#ffffff", accent: "#e63946" },
+  { id: 11, brand: "Midea", name: "Xtreme Save Pro", model: "MSAGBU-12HRFN8", w: 802, h: 292, d: 201, btu: 12000, energy: "A+++", noise: 18, color: "#f0f0f0", accent: "#e63946" },
+  { id: 12, brand: "Midea", name: "Aurora", model: "MSAEAU-09HRFN8", w: 805, h: 294, d: 210, btu: 9000, energy: "A++", noise: 20, color: "#fafafa", accent: "#e63946" },
+  { id: 13, brand: "Midea", name: "All Easy Pro", model: "MSEPCU-12HRFN8", w: 790, h: 285, d: 205, btu: 12000, energy: "A++", noise: 21, color: "#f5f5f5", accent: "#e63946" },
+  { id: 14, brand: "Midea", name: "Breezeless+", model: "MSFAAU-09HRFN8", w: 843, h: 299, d: 216, btu: 9000, energy: "A+++", noise: 17, color: "#ededed", accent: "#e63946" },
+
+  // Inventor
+  { id: 20, brand: "Inventor", name: "Supreme", model: "SPVI32-09WFI", w: 790, h: 275, d: 200, btu: 9000, energy: "A+++", noise: 19, color: "#ffffff", accent: "#00b894" },
+  { id: 21, brand: "Inventor", name: "Aria", model: "ARI5-12WFI", w: 803, h: 290, d: 198, btu: 12000, energy: "A++", noise: 22, color: "#f0f0f0", accent: "#00b894" },
+  { id: 22, brand: "Inventor", name: "Passion Pro", model: "P8MVO-12", w: 818, h: 302, d: 210, btu: 12000, energy: "A++", noise: 23, color: "#f8f8f8", accent: "#00b894" },
+  { id: 23, brand: "Inventor", name: "Nemesis Pro", model: "N2MVO32-09", w: 792, h: 270, d: 195, btu: 9000, energy: "A++", noise: 21, color: "#fafafa", accent: "#00b894" },
+
+  // Daikin
+  { id: 30, brand: "Daikin", name: "Perfera", model: "FTXM25R", w: 778, h: 289, d: 272, btu: 9000, energy: "A+++", noise: 19, color: "#ffffff", accent: "#00a3e0" },
+  { id: 31, brand: "Daikin", name: "Stylish", model: "FTXA25BB", w: 798, h: 295, d: 189, btu: 9000, energy: "A+++", noise: 19, color: "#1a1a2e", accent: "#00a3e0" },
+  { id: 32, brand: "Daikin", name: "Emura 3", model: "FTXJ35AW", w: 958, h: 319, d: 230, btu: 12000, energy: "A+++", noise: 19, color: "#f5f5f5", accent: "#00a3e0" },
+  { id: 33, brand: "Daikin", name: "Sensira", model: "FTXF25E", w: 770, h: 283, d: 225, btu: 9000, energy: "A++", noise: 22, color: "#ffffff", accent: "#00a3e0" },
+
+  // LG
+  { id: 40, brand: "LG", name: "Artcool Mirror", model: "AC09BK", w: 837, h: 308, d: 189, btu: 9000, energy: "A++", noise: 19, color: "#2d2d2d", accent: "#a50034" },
+  { id: 41, brand: "LG", name: "Artcool Gallery", model: "A09FR", w: 837, h: 308, d: 210, btu: 9000, energy: "A++", noise: 19, color: "#f0f0f0", accent: "#a50034" },
+  { id: 42, brand: "LG", name: "Dualcool Premium", model: "S09ET", w: 837, h: 308, d: 189, btu: 9000, energy: "A+++", noise: 18, color: "#fafafa", accent: "#a50034" },
+];
+
+const brands = [...new Set(products.map(p => p.brand))];
+let activeBrand = "Všetky";
+let selectedProduct = null;
+
+// ─── 3D Scene variables ───
+let detailScene, detailCamera, detailRenderer, detailAcMesh;
+let arScene, arCamera, arRenderer, arAcMesh;
+let isMouseDown = false, prevMouse = {x:0,y:0}, rotation = {x:0, y:0};
+
+// ─── INIT ───
+function init() {
+  renderBrandFilter();
+  renderProducts();
+}
+
+function renderBrandFilter() {
+  const container = document.getElementById('brandFilter');
+  container.innerHTML = `<div class="brand-chip ${activeBrand === 'Všetky' ? 'active' : ''}" onclick="setBrand('Všetky')">Všetky</div>`;
+  brands.forEach(b => {
+    container.innerHTML += `<div class="brand-chip ${activeBrand === b ? 'active' : ''}" onclick="setBrand('${b}')">${b}</div>`;
+  });
+}
+
+function setBrand(brand) {
+  activeBrand = brand;
+  renderBrandFilter();
+  filterProducts();
+}
+
+function filterProducts() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const filtered = products.filter(p => {
+    const matchBrand = activeBrand === 'Všetky' || p.brand === activeBrand;
+    const matchSearch = !q || p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q) || p.model.toLowerCase().includes(q);
+    return matchBrand && matchSearch;
+  });
+  renderProducts(filtered);
+}
+
+function renderProducts(list) {
+  list = list || products;
+  const grid = document.getElementById('productGrid');
+  if (!list.length) {
+    grid.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><p>Žiadne výsledky</p></div>';
+    return;
+  }
+  grid.innerHTML = list.map(p => `
+    <div class="product-card" onclick="showDetail(${p.id})">
+      <div class="card-visual" style="background: linear-gradient(135deg, ${p.accent}15, ${p.accent}08)">
+        <div class="brand-badge">${p.brand}</div>
+        <svg width="80" height="36" viewBox="0 0 80 36" fill="none">
+          <rect x="2" y="2" width="76" height="32" rx="4" fill="${p.color}" stroke="${p.accent}40" stroke-width="1.5"/>
+          <rect x="6" y="22" width="68" height="6" rx="2" fill="${p.accent}25"/>
+          <line x1="12" y1="25" x2="20" y2="25" stroke="${p.accent}50" stroke-width="0.8"/>
+          <line x1="22" y1="25" x2="30" y2="25" stroke="${p.accent}50" stroke-width="0.8"/>
+          <line x1="32" y1="25" x2="40" y2="25" stroke="${p.accent}50" stroke-width="0.8"/>
+          <circle cx="68" cy="10" r="2.5" fill="${p.accent}40"/>
+        </svg>
+      </div>
+      <div class="card-name">${p.name}</div>
+      <div class="card-specs">${(p.btu/1000).toFixed(0)}k BTU · ${p.energy}</div>
+    </div>
+  `).join('');
+}
+
+// ─── DETAIL VIEW ───
+function showDetail(id) {
+  selectedProduct = products.find(p => p.id === id);
+  if (!selectedProduct) return;
+  const p = selectedProduct;
+
+  document.getElementById('catalogScreen').classList.remove('active');
+  document.getElementById('detailScreen').classList.add('active');
+  document.getElementById('backBtn').classList.add('visible');
+  document.getElementById('headerSubtitle').textContent = p.brand;
+
+  document.getElementById('detailBrand').textContent = p.brand;
+  document.getElementById('detailName').textContent = p.name;
+
+  document.getElementById('specsGrid').innerHTML = `
+    <div class="spec-item"><div class="spec-label">Model</div><div class="spec-value" style="font-size:11px">${p.model}</div></div>
+    <div class="spec-item"><div class="spec-label">Výkon</div><div class="spec-value">${(p.btu/1000).toFixed(0)}k BTU</div></div>
+    <div class="spec-item"><div class="spec-label">Energia</div><div class="spec-value ${p.energy.includes('+++') ? 'energy-a' : 'energy-b'}">${p.energy}</div></div>
+    <div class="spec-item"><div class="spec-label">Hlučnosť</div><div class="spec-value">${p.noise} dB</div></div>
+  `;
+
+  // Dimensions visual
+  const maxDimW = 280;
+  const scale = maxDimW / p.w;
+  const boxW = p.w * scale;
+  const boxH = p.h * scale;
+  const dimBox = document.getElementById('dimBox');
+  dimBox.style.width = boxW + 'px';
+  dimBox.style.height = boxH + 'px';
+  dimBox.innerHTML = `
+    <span style="font-size:10px;opacity:0.5">${p.model}</span>
+    <span class="dim-label-w">${p.w} mm</span>
+    <span class="dim-label-h">${p.h} mm</span>
+  `;
+
+  init3DDetail(p);
+}
+
+function goBack() {
+  document.getElementById('detailScreen').classList.remove('active');
+  document.getElementById('catalogScreen').classList.add('active');
+  document.getElementById('backBtn').classList.remove('visible');
+  document.getElementById('headerSubtitle').textContent = 'Katalóg';
+  cleanup3DDetail();
+}
+
+// ─── THREE.JS 3D PREVIEW ───
+function createACModel(p, highDetail) {
+  const group = new THREE.Group();
+  const wScale = p.w / 1000;
+  const hScale = p.h / 1000;
+  const dScale = p.d / 1000;
+
+  // Parse color
+  const bodyColor = new THREE.Color(p.color);
+  const accentColor = new THREE.Color(p.accent);
+  const isDark = bodyColor.r < 0.3;
+
+  // Main body
+  const bodyGeo = new THREE.BoxGeometry(wScale, hScale, dScale);
+  const bodyMat = new THREE.MeshPhongMaterial({
+    color: bodyColor, specular: 0x444444, shininess: 60
+  });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  group.add(body);
+
+  // Front panel (slightly in front)
+  const panelGeo = new THREE.BoxGeometry(wScale - 0.01, hScale - 0.01, 0.005);
+  const panelMat = new THREE.MeshPhongMaterial({
+    color: bodyColor, specular: 0x666666, shininess: 80
+  });
+  const panel = new THREE.Mesh(panelGeo, panelMat);
+  panel.position.z = dScale / 2 + 0.003;
+  group.add(panel);
+
+  // Air vent (bottom section)
+  const ventGeo = new THREE.BoxGeometry(wScale * 0.88, hScale * 0.15, 0.008);
+  const ventMat = new THREE.MeshPhongMaterial({
+    color: isDark ? 0x444444 : 0xd0d0d0, specular: 0x333333, shininess: 40
+  });
+  const vent = new THREE.Mesh(ventGeo, ventMat);
+  vent.position.set(0, -hScale * 0.32, dScale / 2 + 0.007);
+  group.add(vent);
+
+  // Vent slats
+  for (let i = 0; i < 5; i++) {
+    const slatGeo = new THREE.BoxGeometry(wScale * 0.82, 0.002, 0.006);
+    const slatMat = new THREE.MeshPhongMaterial({ color: isDark ? 0x333333 : 0xbcbcbc });
+    const slat = new THREE.Mesh(slatGeo, slatMat);
+    slat.position.set(0, -hScale * 0.26 - i * hScale * 0.03, dScale / 2 + 0.01);
+    group.add(slat);
+  }
+
+  // Display/indicator LED
+  const ledGeo = new THREE.CircleGeometry(0.006, 16);
+  const ledMat = new THREE.MeshBasicMaterial({ color: accentColor });
+  const led = new THREE.Mesh(ledGeo, ledMat);
+  led.position.set(wScale * 0.36, hScale * 0.15, dScale / 2 + 0.008);
+  group.add(led);
+
+  // Brand line accent
+  const lineGeo = new THREE.BoxGeometry(wScale * 0.2, 0.003, 0.007);
+  const lineMat = new THREE.MeshBasicMaterial({ color: accentColor, transparent: true, opacity: 0.6 });
+  const line = new THREE.Mesh(lineGeo, lineMat);
+  line.position.set(-wScale * 0.25, hScale * 0.15, dScale / 2 + 0.007);
+  group.add(line);
+
+  // Wall mount plate (back)
+  const plateGeo = new THREE.BoxGeometry(wScale * 0.5, hScale * 0.6, 0.005);
+  const plateMat = new THREE.MeshPhongMaterial({ color: 0x999999, shininess: 20 });
+  const plate = new THREE.Mesh(plateGeo, plateMat);
+  plate.position.z = -dScale / 2 - 0.005;
+  group.add(plate);
+
+  return group;
+}
+
+function init3DDetail(p) {
+  cleanup3DDetail();
+  const container = document.getElementById('detail3dContainer');
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+
+  detailScene = new THREE.Scene();
+  detailCamera = new THREE.PerspectiveCamera(40, w / h, 0.01, 10);
+  detailCamera.position.set(0, 0, 1.5);
+
+  detailRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  detailRenderer.setSize(w, h);
+  detailRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  detailRenderer.setClearColor(0x000000, 0);
+  container.insertBefore(detailRenderer.domElement, container.firstChild);
+
+  // Lights
+  const amb = new THREE.AmbientLight(0xffffff, 0.5);
+  detailScene.add(amb);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+  dir.position.set(2, 3, 4);
+  detailScene.add(dir);
+  const dir2 = new THREE.DirectionalLight(0x8888ff, 0.3);
+  dir2.position.set(-2, -1, 2);
+  detailScene.add(dir2);
+
+  detailAcMesh = createACModel(p, true);
+  detailScene.add(detailAcMesh);
+
+  rotation = { x: 0.1, y: 0.3 };
+  detailAcMesh.rotation.x = rotation.x;
+  detailAcMesh.rotation.y = rotation.y;
+
+  // Interaction
+  const canvas = detailRenderer.domElement;
+  canvas.addEventListener('pointerdown', (e) => { isMouseDown = true; prevMouse = {x: e.clientX, y: e.clientY}; });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!isMouseDown) return;
+    const dx = e.clientX - prevMouse.x;
+    const dy = e.clientY - prevMouse.y;
+    rotation.y += dx * 0.008;
+    rotation.x += dy * 0.008;
+    rotation.x = Math.max(-0.5, Math.min(0.5, rotation.x));
+    prevMouse = {x: e.clientX, y: e.clientY};
+  });
+  canvas.addEventListener('pointerup', () => { isMouseDown = false; });
+  canvas.addEventListener('pointerleave', () => { isMouseDown = false; });
+
+  animateDetail();
+}
+
+function animateDetail() {
+  if (!detailRenderer) return;
+  requestAnimationFrame(animateDetail);
+  if (detailAcMesh) {
+    detailAcMesh.rotation.x += (rotation.x - detailAcMesh.rotation.x) * 0.1;
+    detailAcMesh.rotation.y += (rotation.y - detailAcMesh.rotation.y) * 0.1;
+  }
+  detailRenderer.render(detailScene, detailCamera);
+}
+
+function cleanup3DDetail() {
+  if (detailRenderer) {
+    detailRenderer.dispose();
+    detailRenderer.domElement.remove();
+    detailRenderer = null;
+  }
+}
+
+// ─── AR MODE ───
+let arStream = null;
+
+async function startAR() {
+  if (!selectedProduct) return;
+  const p = selectedProduct;
+
+  document.getElementById('arModelLabel').textContent = `${p.brand} ${p.name}`;
+  document.getElementById('arModelDims').textContent = `${p.w} × ${p.h} × ${p.d} mm`;
+  document.getElementById('arPosY').value = 35;
+  document.getElementById('arScale').value = 100;
+  document.getElementById('posYVal').textContent = '35%';
+  document.getElementById('scaleVal').textContent = '100%';
+
+  try {
+    arStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+    });
+    const video = document.getElementById('arVideo');
+    video.srcObject = arStream;
+    await video.play();
+
+    document.getElementById('arScreen').classList.add('active');
+    initAR3D(p);
+  } catch (err) {
+    showToast('Kamera nie je dostupná. Skúste povoliť prístup ku kamere.');
+  }
+}
+
+function initAR3D(p) {
+  const canvas = document.getElementById('arCanvas');
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+
+  arScene = new THREE.Scene();
+  arCamera = new THREE.PerspectiveCamera(50, w / h, 0.01, 100);
+  arCamera.position.set(0, 0, 2);
+
+  arRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  arRenderer.setSize(w, h);
+  arRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  arRenderer.setClearColor(0x000000, 0);
+
+  const amb = new THREE.AmbientLight(0xffffff, 0.7);
+  arScene.add(amb);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+  dir.position.set(1, 2, 3);
+  arScene.add(dir);
+
+  arAcMesh = createACModel(p, true);
+  arScene.add(arAcMesh);
+
+  updateARPosition();
+  animateAR();
+}
+
+function updateARPosition() {
+  if (!arAcMesh || !selectedProduct) return;
+  const posY = parseInt(document.getElementById('arPosY').value);
+  const scale = parseInt(document.getElementById('arScale').value);
+
+  document.getElementById('posYVal').textContent = posY + '%';
+  document.getElementById('scaleVal').textContent = scale + '%';
+
+  const yNorm = (posY - 50) / 50;
+  arAcMesh.position.y = -yNorm * 1.2;
+  const s = scale / 100;
+  arAcMesh.scale.set(s, s, s);
+  arAcMesh.rotation.y = 0;
+  arAcMesh.rotation.x = 0.05;
+}
+
+function animateAR() {
+  if (!arRenderer) return;
+  requestAnimationFrame(animateAR);
+  arRenderer.render(arScene, arCamera);
+}
+
+function closeAR() {
+  document.getElementById('arScreen').classList.remove('active');
+  if (arStream) {
+    arStream.getTracks().forEach(t => t.stop());
+    arStream = null;
+  }
+  if (arRenderer) {
+    arRenderer.dispose();
+    arRenderer = null;
+  }
+}
+
+async function captureAR() {
+  if (!selectedProduct) return;
+  const p = selectedProduct;
+
+  const outCanvas = document.createElement('canvas');
+  const video = document.getElementById('arVideo');
+  outCanvas.width = video.videoWidth || 1920;
+  outCanvas.height = video.videoHeight || 1080;
+  const ctx = outCanvas.getContext('2d');
+
+  // Draw video
+  ctx.drawImage(video, 0, 0, outCanvas.width, outCanvas.height);
+
+  // Draw 3D overlay
+  const arCanvas = document.getElementById('arCanvas');
+  ctx.drawImage(arCanvas, 0, 0, outCanvas.width, outCanvas.height);
+
+  // Draw branding bar
+  const barH = 80;
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, outCanvas.height - barH, outCanvas.width, barH);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 24px sans-serif';
+  ctx.fillText(`${p.brand} ${p.name}`, 20, outCanvas.height - barH + 35);
+  ctx.font = '16px monospace';
+  ctx.fillStyle = '#aaaaaa';
+  ctx.fillText(`${p.w}×${p.h}mm · ${(p.btu/1000)}k BTU · ${p.energy}`, 20, outCanvas.height - barH + 60);
+
+  // Logo text (right side)
+  ctx.fillStyle = '#3b82f6';
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('AC VISUALIZER', outCanvas.width - 20, outCanvas.height - barH + 48);
+  ctx.textAlign = 'left';
+
+  // Save
+  try {
+    const blob = await new Promise(res => outCanvas.toBlob(res, 'image/jpeg', 0.92));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AC_${p.brand}_${p.name.replace(/\s/g,'_')}.jpg`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Screenshot uložený! 📸');
+  } catch {
+    showToast('Nepodarilo sa uložiť screenshot');
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ─── START ───
+init();
+</script>
+</body>
+</html>
