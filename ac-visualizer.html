@@ -1199,14 +1199,19 @@ function onXRSelect() {
     xrAcMesh.visible = true;
     xrAcMesh.position.setFromMatrixPosition(xrReticle.matrix);
 
-    // Orient model against the surface
-    const q = new THREE.Quaternion();
-    const mat4 = new THREE.Matrix4().fromArray(xrReticle.matrix.elements);
-    q.setFromRotationMatrix(mat4);
-    xrAcMesh.quaternion.copy(q);
+    // Orient model so its front faces outward from the surface.
+    // Hit-test pose Y-axis = surface normal (points outward from wall).
+    const poseMat = new THREE.Matrix4().fromArray(xrReticle.matrix.elements);
+    const poseQ = new THREE.Quaternion().setFromRotationMatrix(poseMat);
+    const surfaceNormal = new THREE.Vector3(0, 1, 0).applyQuaternion(poseQ);
 
-    // Store base orientation for rotation adjustments
-    xrBaseQuaternion = q.clone();
+    // Point model's front (+Z) along the surface normal, with world up as reference
+    const pos = xrAcMesh.position.clone();
+    const lookTarget = pos.clone().add(surfaceNormal);
+    xrAcMesh.lookAt(lookTarget);
+
+    // Store base orientation for user rotation adjustments
+    xrBaseQuaternion = xrAcMesh.quaternion.clone();
 
     // Hide reticle, show controls
     xrReticle.visible = false;
