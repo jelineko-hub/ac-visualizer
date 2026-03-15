@@ -472,8 +472,12 @@
       <input type="range" id="arScale" min="50" max="150" value="100" oninput="updateARPosition()">
     </div>
     <div class="ar-slider-group">
-      <label><span>Otočenie</span><span id="rotVal">0°</span></label>
+      <label><span>Otočenie ↔</span><span id="rotVal">0°</span></label>
       <input type="range" id="arRot" min="-180" max="180" value="0" oninput="updateARPosition()">
+    </div>
+    <div class="ar-slider-group">
+      <label><span>Náklon ↕</span><span id="tiltVal">0°</span></label>
+      <input type="range" id="arTilt" min="-45" max="45" value="0" oninput="updateARPosition()">
     </div>
     <div class="ar-btn-row">
       <button class="ar-btn secondary" onclick="captureAR()">📷 Screenshot</button>
@@ -967,9 +971,11 @@ async function initAR3D(p) {
   arBaseScale = 1;
   arScene.add(arAcMesh);
 
-  // Reset rotation slider
+  // Reset rotation sliders
   document.getElementById('arRot').value = 0;
   document.getElementById('rotVal').textContent = '0°';
+  document.getElementById('arTilt').value = 0;
+  document.getElementById('tiltVal').textContent = '0°';
 
   updateARPosition();
   animateAR();
@@ -980,17 +986,19 @@ function updateARPosition() {
   const posY = parseInt(document.getElementById('arPosY').value);
   const scale = parseInt(document.getElementById('arScale').value);
   const rot = parseInt(document.getElementById('arRot').value);
+  const tilt = parseInt(document.getElementById('arTilt').value);
 
   document.getElementById('posYVal').textContent = posY + '%';
   document.getElementById('scaleVal').textContent = scale + '%';
   document.getElementById('rotVal').textContent = rot + '°';
+  document.getElementById('tiltVal').textContent = tilt + '°';
 
   const yNorm = (posY - 50) / 50;
   arAcMesh.position.y = -yNorm * 1.2;
   const s = scale / 100;
   arAcMesh.scale.set(s, s, s);
   arAcMesh.rotation.y = (rot * Math.PI) / 180;
-  arAcMesh.rotation.x = 0.05;
+  arAcMesh.rotation.x = (tilt * Math.PI) / 180;
 }
 
 function animateAR() {
