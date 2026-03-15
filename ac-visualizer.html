@@ -492,36 +492,9 @@
 <script>
 // ─── PRODUCT DATABASE ───
 const products = [
-  // Samsung
+  // Samsung – only models with real 3D data for now
   { id: 1, brand: "Samsung", name: "WindFree Comfort", model: "AR09TXFCAWKNEU", w: 820, h: 299, d: 215, btu: 9000, energy: "A++", noise: 19, color: "#f0f0f0", accent: "#1a73e8" },
-  { id: 2, brand: "Samsung", name: "WindFree Elite", model: "AR12TXEAAWKNEU", w: 889, h: 299, d: 215, btu: 12000, energy: "A+++", noise: 16, color: "#f5f5f5", accent: "#1a73e8" },
   { id: 3, brand: "Samsung", name: "Cebu", model: "AR09TXFYAWKNEU", w: 820, h: 299, d: 215, btu: 9000, energy: "A++", noise: 20, color: "#ffffff", accent: "#1a73e8" },
-  { id: 4, brand: "Samsung", name: "Luzon", model: "AR09TXHZAWKNEU", w: 820, h: 265, d: 189, btu: 9000, energy: "A++", noise: 22, color: "#f8f8f8", accent: "#1a73e8" },
-  { id: 5, brand: "Samsung", name: "WindFree Premium", model: "AR24TXCAAWKNEU", w: 1055, h: 299, d: 215, btu: 24000, energy: "A++", noise: 21, color: "#e8e8e8", accent: "#1a73e8" },
-
-  // Midea
-  { id: 10, brand: "Midea", name: "Mission II", model: "MB-09N8D6-I", w: 795, h: 275, d: 200, btu: 9000, energy: "A++", noise: 22, color: "#ffffff", accent: "#e63946" },
-  { id: 11, brand: "Midea", name: "Xtreme Save Pro", model: "MSAGBU-12HRFN8", w: 802, h: 292, d: 201, btu: 12000, energy: "A+++", noise: 18, color: "#f0f0f0", accent: "#e63946" },
-  { id: 12, brand: "Midea", name: "Aurora", model: "MSAEAU-09HRFN8", w: 805, h: 294, d: 210, btu: 9000, energy: "A++", noise: 20, color: "#fafafa", accent: "#e63946" },
-  { id: 13, brand: "Midea", name: "All Easy Pro", model: "MSEPCU-12HRFN8", w: 790, h: 285, d: 205, btu: 12000, energy: "A++", noise: 21, color: "#f5f5f5", accent: "#e63946" },
-  { id: 14, brand: "Midea", name: "Breezeless+", model: "MSFAAU-09HRFN8", w: 843, h: 299, d: 216, btu: 9000, energy: "A+++", noise: 17, color: "#ededed", accent: "#e63946" },
-
-  // Inventor
-  { id: 20, brand: "Inventor", name: "Supreme", model: "SPVI32-09WFI", w: 790, h: 275, d: 200, btu: 9000, energy: "A+++", noise: 19, color: "#ffffff", accent: "#00b894" },
-  { id: 21, brand: "Inventor", name: "Aria", model: "ARI5-12WFI", w: 803, h: 290, d: 198, btu: 12000, energy: "A++", noise: 22, color: "#f0f0f0", accent: "#00b894" },
-  { id: 22, brand: "Inventor", name: "Passion Pro", model: "P8MVO-12", w: 818, h: 302, d: 210, btu: 12000, energy: "A++", noise: 23, color: "#f8f8f8", accent: "#00b894" },
-  { id: 23, brand: "Inventor", name: "Nemesis Pro", model: "N2MVO32-09", w: 792, h: 270, d: 195, btu: 9000, energy: "A++", noise: 21, color: "#fafafa", accent: "#00b894" },
-
-  // Daikin
-  { id: 30, brand: "Daikin", name: "Perfera", model: "FTXM25R", w: 778, h: 289, d: 272, btu: 9000, energy: "A+++", noise: 19, color: "#ffffff", accent: "#00a3e0" },
-  { id: 31, brand: "Daikin", name: "Stylish", model: "FTXA25BB", w: 798, h: 295, d: 189, btu: 9000, energy: "A+++", noise: 19, color: "#1a1a2e", accent: "#00a3e0" },
-  { id: 32, brand: "Daikin", name: "Emura 3", model: "FTXJ35AW", w: 958, h: 319, d: 230, btu: 12000, energy: "A+++", noise: 19, color: "#f5f5f5", accent: "#00a3e0" },
-  { id: 33, brand: "Daikin", name: "Sensira", model: "FTXF25E", w: 770, h: 283, d: 225, btu: 9000, energy: "A++", noise: 22, color: "#ffffff", accent: "#00a3e0" },
-
-  // LG
-  { id: 40, brand: "LG", name: "Artcool Mirror", model: "AC09BK", w: 837, h: 308, d: 189, btu: 9000, energy: "A++", noise: 19, color: "#2d2d2d", accent: "#a50034" },
-  { id: 41, brand: "LG", name: "Artcool Gallery", model: "A09FR", w: 837, h: 308, d: 210, btu: 9000, energy: "A++", noise: 19, color: "#f0f0f0", accent: "#a50034" },
-  { id: 42, brand: "LG", name: "Dualcool Premium", model: "S09ET", w: 837, h: 308, d: 189, btu: 9000, energy: "A+++", noise: 18, color: "#fafafa", accent: "#a50034" },
 ];
 
 const brands = [...new Set(products.map(p => p.brand))];
@@ -542,6 +515,74 @@ const glbModelMap = {
 
 const glbCache = {}; // cache loaded models by URL
 const gltfLoader = new THREE.GLTFLoader();
+const textureLoader = new THREE.TextureLoader();
+
+// ─── Realistic Material Application ───
+// Since OBJ→GLB conversion lost textures, we apply them programmatically by mesh name.
+function applyWindFreeMaterials(scene) {
+  // Pre-load textures
+  const meshAlpha = textureLoader.load('models/textures/windfree-mesh-alpha.jpg');
+  const meshBump = textureLoader.load('models/textures/windfree-mesh-bump.jpg');
+  const samsungLogo = textureLoader.load('models/textures/samsung-logo.jpg');
+  const displayTex = textureLoader.load('models/textures/windfree-display.jpg');
+
+  // Flip textures vertically (JPGs from 3ds Max often need this)
+  [meshAlpha, meshBump, samsungLogo, displayTex].forEach(t => { t.flipY = true; });
+
+  // Material definitions
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0xf5f5f5, roughness: 0.25, metalness: 0.0,  // smooth white plastic
+  });
+  const bodyLowerMat = new THREE.MeshStandardMaterial({
+    color: 0xe8e8e8, roughness: 0.3, metalness: 0.0,
+    map: samsungLogo,  // Samsung logo on the lower body panel
+  });
+  const netMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff, roughness: 0.35, metalness: 0.0,
+    alphaMap: meshAlpha, transparent: true, alphaTest: 0.5, // dot pattern cutout
+    bumpMap: meshBump, bumpScale: 0.3,
+  });
+  const displayMat = new THREE.MeshStandardMaterial({
+    color: 0x111111, roughness: 0.4, metalness: 0.1,
+    emissiveMap: displayTex, emissive: new THREE.Color(0xffffff), emissiveIntensity: 1.5,
+  });
+  const swingMat = new THREE.MeshStandardMaterial({
+    color: 0xf0f0f0, roughness: 0.2, metalness: 0.0,  // glossy white flap
+  });
+  const fenceMat = new THREE.MeshStandardMaterial({
+    color: 0xeaeaea, roughness: 0.3, metalness: 0.0,
+  });
+  const innerMat = new THREE.MeshStandardMaterial({
+    color: 0x333333, roughness: 0.6, metalness: 0.1,  // dark inner machinery
+  });
+  const lockMat = new THREE.MeshStandardMaterial({
+    color: 0x888888, roughness: 0.4, metalness: 0.3,
+  });
+
+  scene.traverse((child) => {
+    if (!child.isMesh) return;
+    const n = child.name.toLowerCase();
+    if (n.includes('digital_display')) child.material = displayMat;
+    else if (n.includes('ac_body') && !n.includes('lower')) child.material = bodyMat;
+    else if (n.includes('body_lower')) child.material = bodyLowerMat;
+    else if (n.includes('net')) child.material = netMat;
+    else if (n.includes('swing')) child.material = swingMat;
+    else if (n.includes('fence')) child.material = fenceMat;
+    else if (n.includes('inner') || n.includes('lower_machine')) child.material = innerMat;
+    else if (n.includes('lock')) child.material = lockMat;
+    else child.material = bodyMat; // fallback to white body
+  });
+}
+
+// Apply clean white materials for AR12 (no textures available)
+function applyAR12Materials(scene) {
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0xf5f5f5, roughness: 0.25, metalness: 0.0,
+  });
+  scene.traverse((child) => {
+    if (child.isMesh) child.material = bodyMat;
+  });
+}
 
 function extractSingleUnit(scene) {
   // Many AC 3D models contain 2 units side by side (open + closed view).
@@ -576,6 +617,9 @@ function loadGLBModel(url, productDims) {
   return new Promise((resolve, reject) => {
     function processModel(scene) {
       const single = extractSingleUnit(scene);
+      // Apply realistic materials based on which model this is
+      if (url.includes('windfree')) applyWindFreeMaterials(single);
+      else if (url.includes('ar12')) applyAR12Materials(single);
       scaleModelToDimensions(single, productDims);
       // Wrap in pivot group so rotation happens around the model's visual center
       const pivot = new THREE.Group();
@@ -828,15 +872,18 @@ async function init3DDetail(p) {
   detailRenderer.setClearColor(0x000000, 0);
   container.insertBefore(detailRenderer.domElement, container.firstChild);
 
-  // Lights
-  const amb = new THREE.AmbientLight(0xffffff, 0.5);
+  // Lights – optimized for white plastic AC unit with textures
+  const amb = new THREE.AmbientLight(0xffffff, 0.6);
   detailScene.add(amb);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.0);
   dir.position.set(2, 3, 4);
   detailScene.add(dir);
-  const dir2 = new THREE.DirectionalLight(0x8888ff, 0.3);
+  const dir2 = new THREE.DirectionalLight(0xccccff, 0.4);
   dir2.position.set(-2, -1, 2);
   detailScene.add(dir2);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.3);
+  rim.position.set(0, 0, -3);
+  detailScene.add(rim);
 
   // Try to load GLB model, fall back to procedural
   const glbUrl = glbModelMap[p.id];
@@ -948,11 +995,14 @@ async function initAR3D(p) {
   arRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   arRenderer.setClearColor(0x000000, 0);
 
-  const amb = new THREE.AmbientLight(0xffffff, 0.7);
+  const amb = new THREE.AmbientLight(0xffffff, 0.8);
   arScene.add(amb);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
   dir.position.set(1, 2, 3);
   arScene.add(dir);
+  const dir2 = new THREE.DirectionalLight(0xffffff, 0.3);
+  dir2.position.set(-1, 0, 2);
+  arScene.add(dir2);
 
   // Try GLB model, fall back to procedural
   const glbUrl = glbModelMap[p.id];
