@@ -535,20 +535,51 @@ const glbModelMap = {
 const glbCache = {}; // cache loaded models by URL
 const gltfLoader = new THREE.GLTFLoader();
 
+function extractSingleUnit(scene) {
+  // Many AC 3D models contain 2 units side by side (open + closed view).
+  // We keep only the LEFT unit (closed view) by filtering meshes with negative center X.
+  const box = new THREE.Box3().setFromObject(scene);
+  const fullCenter = new THREE.Vector3();
+  box.getCenter(fullCenter);
+
+  const group = new THREE.Group();
+  const toRemove = [];
+
+  scene.children.forEach(child => {
+    const childBox = new THREE.Box3().setFromObject(child);
+    const childCenter = new THREE.Vector3();
+    childBox.getCenter(childCenter);
+    // If child center is to the right of the full model center → it's the second unit
+    if (childCenter.x > fullCenter.x + 50) {
+      toRemove.push(child);
+    }
+  });
+
+  // If we found a clear split (removed some children), it was a dual model
+  if (toRemove.length > 0 && toRemove.length < scene.children.length) {
+    toRemove.forEach(child => scene.remove(child));
+    console.log(`Extracted single unit: removed ${toRemove.length} meshes from second unit`);
+  }
+
+  return scene;
+}
+
 function loadGLBModel(url, productDims) {
   return new Promise((resolve, reject) => {
     if (glbCache[url]) {
       const clone = glbCache[url].clone(true);
-      scaleModelToDimensions(clone, productDims);
-      resolve(clone);
+      const single = extractSingleUnit(clone);
+      scaleModelToDimensions(single, productDims);
+      resolve(single);
       return;
     }
     gltfLoader.load(url,
       (gltf) => {
         const model = gltf.scene;
         glbCache[url] = model.clone(true);
-        scaleModelToDimensions(model, productDims);
-        resolve(model);
+        const single = extractSingleUnit(model);
+        scaleModelToDimensions(single, productDims);
+        resolve(single);
       },
       undefined,
       (err) => { console.warn('GLB load failed:', err); reject(err); }
@@ -557,27 +588,35 @@ function loadGLBModel(url, productDims) {
 }
 
 function scaleModelToDimensions(model, dims) {
-  // Calculate bounding box of loaded model
+  // Calculate bounding box of the (filtered) model
   const box = new THREE.Box3().setFromObject(model);
   const size = new THREE.Vector3();
   box.getSize(size);
   const center = new THREE.Vector3();
   box.getCenter(center);
 
-  // Target size in meters (dims are in mm)
+  // Model is in mm, Three.js scene uses meters (1 unit = 1m)
+  // First convert model to meters, then scale to target dimensions
+  const mmToMeters = 1 / 1000;
+  const modelW = size.x * mmToMeters;
+  const modelH = size.y * mmToMeters;
+  const modelD = size.z * mmToMeters;
+
+  // Target size in meters
   const targetW = dims.w / 1000;
   const targetH = dims.h / 1000;
   const targetD = dims.d / 1000;
 
-  // Scale uniformly based on the largest axis ratio
-  const scaleX = targetW / size.x;
-  const scaleY = targetH / size.y;
-  const scaleZ = targetD / size.z;
-  const uniformScale = Math.min(scaleX, scaleY, scaleZ);
+  // Scale: mm→meters * dimension adjustment
+  const scaleX = targetW / modelW;
+  const scaleY = targetH / modelH;
+  const scaleZ = targetD / modelD;
+  const fitScale = Math.min(scaleX, scaleY, scaleZ);
+  const finalScale = mmToMeters * fitScale;
 
-  model.scale.set(uniformScale, uniformScale, uniformScale);
+  model.scale.set(finalScale, finalScale, finalScale);
 
-  // Re-center the model
+  // Re-center the model at origin
   box.setFromObject(model);
   box.getCenter(center);
   model.position.sub(center);
