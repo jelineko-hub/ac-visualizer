@@ -363,6 +363,31 @@
     animation: hintPulse 3s ease infinite;
   }
 
+  /* ─── WebXR AR OVERLAY ─── */
+  .webxr-overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 200;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .webxr-overlay.active {
+    display: block;
+  }
+  .webxr-instruction {
+    position: absolute; top: 80px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(12px);
+    padding: 10px 20px; border-radius: 20px;
+    font-size: 13px; color: rgba(255,255,255,0.8);
+    white-space: nowrap; z-index: 15;
+    transition: opacity 0.3s;
+    animation: hintPulse 3s ease infinite;
+  }
+  .webxr-controls {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 20px; z-index: 20;
+    background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+  }
+
   /* ─── TOAST ─── */
   .toast {
     position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
@@ -482,6 +507,29 @@
     <div class="ar-btn-row">
       <button class="ar-btn secondary" onclick="captureAR()">📷 Screenshot</button>
       <button class="ar-btn primary" onclick="closeAR()">✓ Hotovo</button>
+    </div>
+  </div>
+</div>
+
+<!-- WebXR AR OVERLAY (shown on top of WebXR immersive session) -->
+<div class="webxr-overlay" id="webxrOverlay">
+  <div class="webxr-instruction" id="webxrInstruction">Namierte kameru na stenu</div>
+  <button class="ar-close" onclick="closeWebXRAR()">✕</button>
+  <div class="webxr-controls" id="webxrControls" style="display:none;">
+    <div class="ar-model-label" id="webxrModelLabel"></div>
+    <div class="ar-model-dims" id="webxrModelDims"></div>
+    <div class="ar-slider-group">
+      <label><span>Veľkosť</span><span id="webxrScaleVal">100%</span></label>
+      <input type="range" id="webxrScale" min="50" max="150" value="100" oninput="updateWebXRModel()">
+    </div>
+    <div class="ar-slider-group">
+      <label><span>Otočenie ↔</span><span id="webxrRotVal">0°</span></label>
+      <input type="range" id="webxrRot" min="-180" max="180" value="0" oninput="updateWebXRModel()">
+    </div>
+    <div class="ar-btn-row">
+      <button class="ar-btn secondary" onclick="captureWebXRAR()">📷 Screenshot</button>
+      <button class="ar-btn secondary" onclick="resetWebXRPlacement()">↻ Presunúť</button>
+      <button class="ar-btn primary" onclick="closeWebXRAR()">✓ Hotovo</button>
     </div>
   </div>
 </div>
@@ -955,8 +1003,41 @@ function cleanup3DDetail() {
 // ─── AR MODE ───
 let arStream = null;
 
+// ─── WebXR state ───
+let xrSession = null;
+let xrRefSpace = null;
+let xrViewerSpace = null;
+let xrHitTestSource = null;
+let xrReticle = null;
+let xrAcMesh = null;
+let xrPlaced = false;
+let xrRenderer = null;
+let xrScene = null;
+let xrCamera = null;
+let xrBaseQuaternion = null;
+
 async function startAR() {
   if (!selectedProduct) return;
+
+  // Check WebXR support
+  let webxrSupported = false;
+  if (navigator.xr) {
+    try {
+      webxrSupported = await navigator.xr.isSessionSupported('immersive-ar');
+    } catch (e) {
+      webxrSupported = false;
+    }
+  }
+
+  if (webxrSupported) {
+    startWebXRAR();
+  } else {
+    startFallbackAR();
+  }
+}
+
+// ─── Fallback AR (slider-based, original implementation) ───
+async function startFallbackAR() {
   const p = selectedProduct;
 
   document.getElementById('arModelLabel').textContent = `${p.brand} ${p.name}`;
@@ -979,6 +1060,262 @@ async function startAR() {
   } catch (err) {
     showToast('Kamera nie je dostupná. Skúste povoliť prístup ku kamere.');
   }
+}
+
+// ─── WebXR AR (hit-test, tap-to-place) ───
+function createReticle() {
+  const ring = new THREE.RingGeometry(0.04, 0.05, 32);
+  ring.rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x3b82f6,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide
+  });
+  const mesh = new THREE.Mesh(ring, mat);
+  mesh.matrixAutoUpdate = false;
+  return mesh;
+}
+
+async function startWebXRAR() {
+  const p = selectedProduct;
+  const overlay = document.getElementById('webxrOverlay');
+
+  // Create WebXR-capable renderer
+  xrRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  xrRenderer.setPixelRatio(window.devicePixelRatio);
+  xrRenderer.setSize(window.innerWidth, window.innerHeight);
+  xrRenderer.xr.enabled = true;
+
+  // Scene
+  xrScene = new THREE.Scene();
+  xrCamera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+  // Lighting
+  xrScene.add(new THREE.AmbientLight(0xffffff, 0.8));
+  const dir1 = new THREE.DirectionalLight(0xffffff, 0.8);
+  dir1.position.set(1, 2, 3);
+  xrScene.add(dir1);
+  const dir2 = new THREE.DirectionalLight(0xffffff, 0.3);
+  dir2.position.set(-1, 0, 2);
+  xrScene.add(dir2);
+
+  // Reticle
+  xrReticle = createReticle();
+  xrReticle.visible = false;
+  xrScene.add(xrReticle);
+
+  // Pre-load AC model
+  const glbUrl = glbModelMap[p.id];
+  if (glbUrl) {
+    try {
+      xrAcMesh = await loadGLBModel(glbUrl, p);
+    } catch {
+      xrAcMesh = createACModel(p, true);
+    }
+  } else {
+    xrAcMesh = createACModel(p, true);
+  }
+  xrAcMesh.visible = false;
+  xrScene.add(xrAcMesh);
+
+  // Request XR session
+  try {
+    xrSession = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: overlay }
+    });
+  } catch (err) {
+    console.warn('WebXR session failed, falling back:', err);
+    cleanupWebXR();
+    startFallbackAR();
+    return;
+  }
+
+  // Configure renderer for XR
+  xrRenderer.xr.setReferenceSpaceType('local');
+  await xrRenderer.xr.setSession(xrSession);
+
+  // Reference spaces
+  xrRefSpace = await xrSession.requestReferenceSpace('local');
+  xrViewerSpace = await xrSession.requestReferenceSpace('viewer');
+
+  // Hit-test source (ray from center of view)
+  xrHitTestSource = await xrSession.requestHitTestSource({ space: xrViewerSpace });
+
+  // Show overlay UI
+  overlay.classList.add('active');
+  document.getElementById('webxrInstruction').textContent = 'Namierte kameru na stenu';
+  document.getElementById('webxrInstruction').style.display = 'block';
+  document.getElementById('webxrControls').style.display = 'none';
+  document.getElementById('webxrModelLabel').textContent = `${p.brand} ${p.name}`;
+  document.getElementById('webxrModelDims').textContent = `${p.w} × ${p.h} × ${p.d} mm`;
+  xrPlaced = false;
+
+  // Events
+  xrSession.addEventListener('select', onXRSelect);
+  xrSession.addEventListener('end', onXRSessionEnd);
+
+  // Start render loop
+  xrRenderer.setAnimationLoop(onXRFrame);
+}
+
+function onXRFrame(timestamp, frame) {
+  if (!xrSession || !frame) return;
+
+  // Hit-test before placement
+  if (!xrPlaced && xrHitTestSource) {
+    const hitResults = frame.getHitTestResults(xrHitTestSource);
+    if (hitResults.length > 0) {
+      const pose = hitResults[0].getPose(xrRefSpace);
+      if (pose) {
+        xrReticle.visible = true;
+        xrReticle.matrix.fromArray(pose.transform.matrix);
+        document.getElementById('webxrInstruction').textContent = 'Klepnite pre umiestnenie klimatizácie';
+      }
+    } else {
+      xrReticle.visible = false;
+      document.getElementById('webxrInstruction').textContent = 'Namierte kameru na stenu';
+    }
+  }
+
+  xrRenderer.render(xrScene, xrCamera);
+}
+
+function onXRSelect() {
+  if (!xrReticle || !xrReticle.visible) return;
+
+  if (!xrPlaced) {
+    // Place model at reticle position
+    xrAcMesh.visible = true;
+    xrAcMesh.position.setFromMatrixPosition(xrReticle.matrix);
+
+    // Orient model against the surface
+    const q = new THREE.Quaternion();
+    const mat4 = new THREE.Matrix4().fromArray(xrReticle.matrix.elements);
+    q.setFromRotationMatrix(mat4);
+    xrAcMesh.quaternion.copy(q);
+
+    // Store base orientation for rotation adjustments
+    xrBaseQuaternion = q.clone();
+
+    // Hide reticle, show controls
+    xrReticle.visible = false;
+    xrPlaced = true;
+
+    document.getElementById('webxrInstruction').style.display = 'none';
+    document.getElementById('webxrControls').style.display = 'block';
+    document.getElementById('webxrScale').value = 100;
+    document.getElementById('webxrScaleVal').textContent = '100%';
+    document.getElementById('webxrRot').value = 0;
+    document.getElementById('webxrRotVal').textContent = '0°';
+  }
+}
+
+function updateWebXRModel() {
+  if (!xrAcMesh || !xrPlaced) return;
+
+  const scale = parseInt(document.getElementById('webxrScale').value) / 100;
+  const rotDeg = parseInt(document.getElementById('webxrRot').value);
+
+  document.getElementById('webxrScaleVal').textContent = Math.round(scale * 100) + '%';
+  document.getElementById('webxrRotVal').textContent = rotDeg + '°';
+
+  xrAcMesh.scale.set(scale, scale, scale);
+
+  // Apply rotation on top of surface orientation
+  if (xrBaseQuaternion) {
+    const userRot = new THREE.Quaternion();
+    userRot.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (rotDeg * Math.PI) / 180);
+    xrAcMesh.quaternion.copy(xrBaseQuaternion).multiply(userRot);
+  }
+}
+
+function resetWebXRPlacement() {
+  xrPlaced = false;
+  xrAcMesh.visible = false;
+  document.getElementById('webxrInstruction').style.display = 'block';
+  document.getElementById('webxrInstruction').textContent = 'Namierte kameru na stenu';
+  document.getElementById('webxrControls').style.display = 'none';
+}
+
+async function captureWebXRAR() {
+  if (!selectedProduct || !xrRenderer) return;
+  const p = selectedProduct;
+
+  const glCanvas = xrRenderer.domElement;
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = glCanvas.width;
+  outCanvas.height = glCanvas.height;
+  const ctx = outCanvas.getContext('2d');
+
+  // Draw XR rendered content
+  ctx.drawImage(glCanvas, 0, 0);
+
+  // Draw branding bar
+  const barH = 80;
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, outCanvas.height - barH, outCanvas.width, barH);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 24px sans-serif';
+  ctx.fillText(`${p.brand} ${p.name}`, 20, outCanvas.height - barH + 35);
+  ctx.font = '16px monospace';
+  ctx.fillStyle = '#aaaaaa';
+  ctx.fillText(`${p.w}×${p.h}mm · ${(p.btu/1000)}k BTU · ${p.energy}`, 20, outCanvas.height - barH + 60);
+  ctx.fillStyle = '#3b82f6';
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('AC VISUALIZER', outCanvas.width - 20, outCanvas.height - barH + 48);
+  ctx.textAlign = 'left';
+
+  try {
+    const blob = await new Promise(res => outCanvas.toBlob(res, 'image/jpeg', 0.92));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AC_${p.brand}_${p.name.replace(/\s/g,'_')}_AR.jpg`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Screenshot uložený! 📸');
+  } catch {
+    showToast('Nepodarilo sa uložiť screenshot');
+  }
+}
+
+function closeWebXRAR() {
+  if (xrSession) {
+    xrSession.end();
+  }
+}
+
+function onXRSessionEnd() {
+  cleanupWebXR();
+}
+
+function cleanupWebXR() {
+  if (xrHitTestSource) {
+    xrHitTestSource.cancel();
+    xrHitTestSource = null;
+  }
+  if (xrRenderer) {
+    xrRenderer.setAnimationLoop(null);
+    xrRenderer.dispose();
+    if (xrRenderer.domElement && xrRenderer.domElement.parentNode) {
+      xrRenderer.domElement.parentNode.removeChild(xrRenderer.domElement);
+    }
+    xrRenderer = null;
+  }
+  document.getElementById('webxrOverlay').classList.remove('active');
+  xrSession = null;
+  xrRefSpace = null;
+  xrViewerSpace = null;
+  xrReticle = null;
+  xrAcMesh = null;
+  xrScene = null;
+  xrCamera = null;
+  xrPlaced = false;
+  xrBaseQuaternion = null;
 }
 
 async function initAR3D(p) {
