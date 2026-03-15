@@ -625,6 +625,7 @@ function scaleModelToDimensions(model, dims) {
 // ─── 3D Scene variables ───
 let detailScene, detailCamera, detailRenderer, detailAcMesh;
 let arScene, arCamera, arRenderer, arAcMesh;
+let arBaseScale = 1; // stores the GLB model's base scale factor
 let isMouseDown = false, prevMouse = {x:0,y:0}, rotation = {x:0, y:0};
 
 // ─── INIT ───
@@ -954,6 +955,8 @@ async function initAR3D(p) {
     arAcMesh = createACModel(p, true);
   }
 
+  // Save the base scale so updateARPosition can multiply it
+  arBaseScale = arAcMesh.scale.x;
   arScene.add(arAcMesh);
 
   updateARPosition();
@@ -970,7 +973,8 @@ function updateARPosition() {
 
   const yNorm = (posY - 50) / 50;
   arAcMesh.position.y = -yNorm * 1.2;
-  const s = scale / 100;
+  // Multiply base scale (from GLB scaling) by slider value
+  const s = arBaseScale * (scale / 100);
   arAcMesh.scale.set(s, s, s);
   arAcMesh.rotation.y = 0;
   arAcMesh.rotation.x = 0.05;
