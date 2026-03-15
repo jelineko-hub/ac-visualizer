@@ -943,7 +943,7 @@ async function initAR3D(p) {
   arCamera = new THREE.PerspectiveCamera(50, w / h, 0.01, 100);
   arCamera.position.set(0, 0, 2);
 
-  arRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  arRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
   arRenderer.setSize(w, h);
   arRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   arRenderer.setClearColor(0x000000, 0);
