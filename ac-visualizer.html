@@ -523,8 +523,16 @@
       <input type="range" id="webxrScale" min="50" max="150" value="100" oninput="updateWebXRModel()">
     </div>
     <div class="ar-slider-group">
-      <label><span>Otočenie ↔</span><span id="webxrRotVal">0°</span></label>
-      <input type="range" id="webxrRot" min="-180" max="180" value="0" oninput="updateWebXRModel()">
+      <label><span>Otočenie ↔ (Y)</span><span id="webxrRotYVal">0°</span></label>
+      <input type="range" id="webxrRotY" min="-180" max="180" value="0" oninput="updateWebXRModel()">
+    </div>
+    <div class="ar-slider-group">
+      <label><span>Náklon ↕ (X)</span><span id="webxrRotXVal">0°</span></label>
+      <input type="range" id="webxrRotX" min="-45" max="45" value="0" oninput="updateWebXRModel()">
+    </div>
+    <div class="ar-slider-group">
+      <label><span>Naklonenie ↻ (Z)</span><span id="webxrRotZVal">0°</span></label>
+      <input type="range" id="webxrRotZ" min="-45" max="45" value="0" oninput="updateWebXRModel()">
     </div>
     <div class="ar-btn-row">
       <button class="ar-btn secondary" onclick="captureWebXRAR()">📷 Screenshot</button>
@@ -1208,8 +1216,12 @@ function onXRSelect() {
     document.getElementById('webxrControls').style.display = 'block';
     document.getElementById('webxrScale').value = 100;
     document.getElementById('webxrScaleVal').textContent = '100%';
-    document.getElementById('webxrRot').value = 0;
-    document.getElementById('webxrRotVal').textContent = '0°';
+    document.getElementById('webxrRotY').value = 0;
+    document.getElementById('webxrRotYVal').textContent = '0°';
+    document.getElementById('webxrRotX').value = 0;
+    document.getElementById('webxrRotXVal').textContent = '0°';
+    document.getElementById('webxrRotZ').value = 0;
+    document.getElementById('webxrRotZVal').textContent = '0°';
   }
 }
 
@@ -1217,18 +1229,23 @@ function updateWebXRModel() {
   if (!xrAcMesh || !xrPlaced) return;
 
   const scale = parseInt(document.getElementById('webxrScale').value) / 100;
-  const rotDeg = parseInt(document.getElementById('webxrRot').value);
+  const rotY = parseInt(document.getElementById('webxrRotY').value);
+  const rotX = parseInt(document.getElementById('webxrRotX').value);
+  const rotZ = parseInt(document.getElementById('webxrRotZ').value);
 
   document.getElementById('webxrScaleVal').textContent = Math.round(scale * 100) + '%';
-  document.getElementById('webxrRotVal').textContent = rotDeg + '°';
+  document.getElementById('webxrRotYVal').textContent = rotY + '°';
+  document.getElementById('webxrRotXVal').textContent = rotX + '°';
+  document.getElementById('webxrRotZVal').textContent = rotZ + '°';
 
   xrAcMesh.scale.set(scale, scale, scale);
 
-  // Apply rotation on top of surface orientation
+  // Apply 3-axis rotation on top of surface orientation
   if (xrBaseQuaternion) {
-    const userRot = new THREE.Quaternion();
-    userRot.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (rotDeg * Math.PI) / 180);
-    xrAcMesh.quaternion.copy(xrBaseQuaternion).multiply(userRot);
+    const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), (rotY * Math.PI) / 180);
+    const qX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), (rotX * Math.PI) / 180);
+    const qZ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), (rotZ * Math.PI) / 180);
+    xrAcMesh.quaternion.copy(xrBaseQuaternion).multiply(qY).multiply(qX).multiply(qZ);
   }
 }
 
