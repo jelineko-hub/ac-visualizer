@@ -1,0 +1,16 @@
+﻿Name: Air conditioner SAMSUNG AR12TXHQASINUA
+Type: model
+Format: 3Ds Max 2017
+Export: OBJ
+Render: Corona (9)
+Polys: 189940
+Verts: 96056
+Units: Millimeters
+Dimension: 1628.1 x 200.72 x 279.85
+Preset: 3DSKY
+Date: 2025.5.9
+Tags: 
+Packinfo: Packed with Model Packer by https://3dground.net/
+Packver: 2.0.2
+Description:
+

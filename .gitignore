@@ -1,2 +1,3 @@
 # Original 3D model source files (too large for GitHub)
 AC models/
+.claude/settings.local.json
