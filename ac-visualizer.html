@@ -1313,7 +1313,16 @@ async function captureWebXRAR() {
 
 function closeWebXRAR() {
   if (xrSession) {
-    xrSession.end();
+    // Stop render loop first to prevent frame callbacks using stale state
+    if (xrRenderer) xrRenderer.setAnimationLoop(null);
+    // Cancel hit-test before ending session
+    if (xrHitTestSource) {
+      try { xrHitTestSource.cancel(); } catch(e) {}
+      xrHitTestSource = null;
+    }
+    xrSession.end().catch(() => {});
+  } else {
+    cleanupWebXR();
   }
 }
 
@@ -1322,8 +1331,9 @@ function onXRSessionEnd() {
 }
 
 function cleanupWebXR() {
+  // hit-test source may already be cancelled by closeWebXRAR
   if (xrHitTestSource) {
-    xrHitTestSource.cancel();
+    try { xrHitTestSource.cancel(); } catch(e) {}
     xrHitTestSource = null;
   }
   if (xrRenderer) {
@@ -1333,6 +1343,16 @@ function cleanupWebXR() {
       xrRenderer.domElement.parentNode.removeChild(xrRenderer.domElement);
     }
     xrRenderer = null;
+  }
+  // Dispose scene objects to free GPU memory
+  if (xrScene) {
+    xrScene.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+        else obj.material.dispose();
+      }
+    });
   }
   document.getElementById('webxrOverlay').classList.remove('active');
   xrSession = null;
