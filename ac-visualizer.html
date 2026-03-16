@@ -514,6 +514,7 @@
 <!-- WebXR AR OVERLAY (shown on top of WebXR immersive session) -->
 <div class="webxr-overlay" id="webxrOverlay">
   <div class="webxr-instruction" id="webxrInstruction">Namierte kameru na stenu</div>
+  <div id="webxrDebug" style="position:fixed;top:60px;left:10px;color:#0f0;font-size:12px;font-family:monospace;z-index:10000;background:rgba(0,0,0,0.5);padding:4px 8px;border-radius:4px;"></div>
   <button class="ar-close" onclick="closeWebXRAR()">✕</button>
   <div class="webxr-controls" id="webxrControls" style="display:none;">
     <div class="ar-model-label" id="webxrModelLabel"></div>
@@ -1151,6 +1152,8 @@ async function startWebXRAR() {
 
   // Hit-test source (ray from center of view)
   xrHitTestSource = await xrSession.requestHitTestSource({ space: xrViewerSpace });
+  const dbg = document.getElementById('webxrDebug');
+  if (dbg) dbg.textContent = `session: OK, hitSource: ${!!xrHitTestSource}`;
 
   // Show overlay UI
   overlay.classList.add('active');
@@ -1172,9 +1175,12 @@ async function startWebXRAR() {
 function onXRFrame(timestamp, frame) {
   if (!xrSession || !frame) return;
 
+  const dbg = document.getElementById('webxrDebug');
+
   // Hit-test before placement
   if (!xrPlaced && xrHitTestSource) {
     const hitResults = frame.getHitTestResults(xrHitTestSource);
+    if (dbg) dbg.textContent = `hits: ${hitResults.length}, placed: ${xrPlaced}`;
     if (hitResults.length > 0) {
       const pose = hitResults[0].getPose(xrRefSpace);
       if (pose) {
