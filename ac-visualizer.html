@@ -562,9 +562,9 @@ let selectedProduct = null;
 // Maps product IDs to GLB model files. Products without mapping use procedural model.
 const glbModelMap = {
   // Samsung WindFree models → samsung-windfree.glb
-  1: 'models/samsung-windfree.glb',  // WindFree Comfort
-  2: 'models/samsung-windfree.glb',  // WindFree Elite
-  5: 'models/samsung-windfree.glb',  // WindFree Premium
+  1: 'models/samsung-windfree-v2.glb',  // WindFree Comfort
+  2: 'models/samsung-windfree-v2.glb',  // WindFree Elite
+  5: 'models/samsung-windfree-v2.glb',  // WindFree Premium
   // Other Samsung models → samsung-ar12.glb
   3: 'models/samsung-ar12.glb',      // Cebu
   4: 'models/samsung-ar12.glb',      // Luzon
@@ -576,58 +576,108 @@ const textureLoader = new THREE.TextureLoader();
 
 // ─── Realistic Material Application ───
 // Since OBJ→GLB conversion lost textures, we apply them programmatically by mesh name.
+function createLogoTexture() {
+  // Create a canvas texture with Samsung logo (top-left) and WindFree logo (top-right)
+  // on a white background — matches real product appearance
+  // Note: UV map of AC_Body002 spans U:[0,1.22] V:[-0.06,1] covering front + sides + top
+  // The front face occupies roughly the center-left portion of UV space
+  const canvas = document.createElement('canvas');
+  canvas.width = 2048;
+  canvas.height = 1024;
+  const ctx = canvas.getContext('2d');
+
+  // White background
+  ctx.fillStyle = '#f5f5f5';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Samsung logo — top-left area of front face, dark gray text
+  // Made large because UV unwrap stretches texture across entire body (front+sides+top)
+  ctx.fillStyle = '#555555';
+  ctx.font = 'bold 100px Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('SAMSUNG', 120, 180);
+
+  // WindFree logo — top-right area of front face, lighter gray
+  ctx.fillStyle = '#909090';
+  ctx.font = '64px Arial, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('WindFree™', canvas.width * 0.78, 160);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.flipY = false;
+  return tex;
+}
+
 function applyWindFreeMaterials(scene) {
   // Pre-load textures
   const meshAlpha = textureLoader.load('models/textures/windfree-mesh-alpha.jpg');
   const meshBump = textureLoader.load('models/textures/windfree-mesh-bump.jpg');
-  const samsungLogo = textureLoader.load('models/textures/samsung-logo.jpg');
   const displayTex = textureLoader.load('models/textures/windfree-display.jpg');
+  const logoTex = createLogoTexture();
 
   // Flip textures vertically (JPGs from 3ds Max often need this)
-  [meshAlpha, meshBump, samsungLogo, displayTex].forEach(t => { t.flipY = true; });
+  [meshAlpha, meshBump, displayTex].forEach(t => { t.flipY = true; });
 
-  // Material definitions
+  // Material definitions — matched to real Samsung WindFree product photos
+  // Reference: ar60f07c1awneu_002_front-open_white.png
+  //   - Main body (center panel): WindFree micro-hole dot pattern
+  //   - Upper fence/grille: white plastic with slanted vents (geometry, not texture)
+  //   - Lower body: white plastic, Samsung logo (top-left), WindFree logo (top-right)
+
+  // Main body: white plastic with Samsung + WindFree logos + subtle bump texture
+  // Note: dot pattern can't be applied here because AC_Body mesh wraps entire housing
+  // (front + sides + back) and alphaMap would make sides transparent too
   const bodyMat = new THREE.MeshStandardMaterial({
-    color: 0xf5f5f5, roughness: 0.25, metalness: 0.0,  // smooth white plastic
+    color: 0xf5f5f5, roughness: 0.25, metalness: 0.0,
+    map: logoTex,  // Samsung logo top-left, WindFree top-right
+    bumpMap: meshBump, bumpScale: 0.05, // subtle surface texture
   });
+
+  // Lower body panel: plain white
   const bodyLowerMat = new THREE.MeshStandardMaterial({
-    color: 0xe8e8e8, roughness: 0.3, metalness: 0.0,
-    map: samsungLogo,  // Samsung logo on the lower body panel
+    color: 0xf0f0f0, roughness: 0.3, metalness: 0.0,
   });
-  const netMat = new THREE.MeshStandardMaterial({
+
+  // Upper fence / grille: WindFree dot pattern (best visual match for the micro-holes)
+  const fenceMat = new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 0.35, metalness: 0.0,
-    alphaMap: meshAlpha, transparent: true, alphaTest: 0.5, // dot pattern cutout
-    bumpMap: meshBump, bumpScale: 0.3,
+    alphaMap: meshAlpha, transparent: true, alphaTest: 0.5,
+    bumpMap: meshBump, bumpScale: 0.15,
   });
+
+  // Digital display: LED glow effect
   const displayMat = new THREE.MeshStandardMaterial({
     color: 0x111111, roughness: 0.4, metalness: 0.1,
     emissiveMap: displayTex, emissive: new THREE.Color(0xffffff), emissiveIntensity: 1.5,
   });
+
+  // Swing blade (air deflector flap): glossy white
   const swingMat = new THREE.MeshStandardMaterial({
-    color: 0xf0f0f0, roughness: 0.2, metalness: 0.0,  // glossy white flap
+    color: 0xf0f0f0, roughness: 0.15, metalness: 0.0,
   });
-  const fenceMat = new THREE.MeshStandardMaterial({
-    color: 0xeaeaea, roughness: 0.3, metalness: 0.0,
-  });
+
+  // Inner parts: dark gray (visible behind the grille)
   const innerMat = new THREE.MeshStandardMaterial({
-    color: 0x333333, roughness: 0.6, metalness: 0.1,  // dark inner machinery
+    color: 0x2a2a2a, roughness: 0.6, metalness: 0.1,
   });
+
+  // Lock / hinge mechanism: medium gray, slightly metallic
   const lockMat = new THREE.MeshStandardMaterial({
-    color: 0x888888, roughness: 0.4, metalness: 0.3,
+    color: 0x999999, roughness: 0.4, metalness: 0.2,
   });
 
   scene.traverse((child) => {
     if (!child.isMesh) return;
     const n = child.name.toLowerCase();
-    if (n.includes('digital_display')) child.material = displayMat;
-    else if (n.includes('ac_body') && !n.includes('lower')) child.material = bodyMat;
-    else if (n.includes('body_lower')) child.material = bodyLowerMat;
-    else if (n.includes('net')) child.material = netMat;
-    else if (n.includes('swing')) child.material = swingMat;
-    else if (n.includes('fence')) child.material = fenceMat;
+    if (n.includes('digital_display') || n.includes('digital display')) child.material = displayMat;
+    else if (n.includes('body_lower') || n.includes('body lower'))    child.material = bodyLowerMat;
+    else if (n.includes('ac_body') || n.includes('ac body'))          child.material = bodyMat;
+    else if (n.includes('fence'))                                     child.material = fenceMat;
+    else if (n.includes('net'))                                       child.material = fenceMat;
+    else if (n.includes('swing'))                             child.material = swingMat;
     else if (n.includes('inner') || n.includes('lower_machine')) child.material = innerMat;
-    else if (n.includes('lock')) child.material = lockMat;
-    else child.material = bodyMat; // fallback to white body
+    else if (n.includes('lock'))                              child.material = lockMat;
+    else                                                      child.material = bodyMat;
   });
 }
 
@@ -670,11 +720,27 @@ function extractSingleUnit(scene) {
   return scene;
 }
 
+function hasEmbeddedMaterials(scene) {
+  // Check if the GLB has proper texture maps embedded (not just solid colors)
+  let hasTextureMap = false;
+  scene.traverse(child => {
+    if (child.isMesh && child.material) {
+      const mat = Array.isArray(child.material) ? child.material[0] : child.material;
+      if (mat && (mat.map || mat.normalMap || mat.bumpMap || mat.alphaMap || mat.emissiveMap)) {
+        hasTextureMap = true;
+      }
+    }
+  });
+  return hasTextureMap;
+}
+
 function loadGLBModel(url, productDims) {
   return new Promise((resolve, reject) => {
     function processModel(scene) {
       const single = extractSingleUnit(scene);
-      // Apply realistic materials based on which model this is
+      // Always apply runtime materials — 3ds Max pipeline exports geometry with named
+      // meshes but textures (alpha, bump, logo) need runtime application because
+      // V-Ray/Corona materials can't be fully converted without renderer plugins
       if (url.includes('windfree')) applyWindFreeMaterials(single);
       else if (url.includes('ar12')) applyAR12Materials(single);
       scaleModelToDimensions(single, productDims);
